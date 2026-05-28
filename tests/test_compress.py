@@ -225,3 +225,29 @@ def test_compress_empty_dir_exits_zero(tmp_path):
     r = _run([source_dir])
     assert r.returncode == 0
     assert "не найден" in r.stdout.lower()
+
+
+# ---------------------------------------------------------------------------
+# Profile selection
+# ---------------------------------------------------------------------------
+
+
+def test_compress_profile_flag(tmp_path):
+    """--profile 480p-fast must encode successfully and produce a valid MP4."""
+    source_dir, output_dir = _make_source(tmp_path, "video-sample.mp4")
+    r = _run([source_dir, "--output", output_dir, "--profile", "480p-fast"])
+
+    assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
+    mp4s = [f for f in os.listdir(output_dir) if f.endswith(".mp4")]
+    assert len(mp4s) == 1
+    assert os.path.getsize(os.path.join(output_dir, mp4s[0])) > 0
+
+
+def test_compress_invalid_profile_exits_nonzero(tmp_path):
+    """An unrecognised --profile value must cause a non-zero exit with a helpful message."""
+    source_dir = str(tmp_path / "source")
+    os.makedirs(source_dir)
+
+    r = _run([source_dir, "--profile", "nonexistent-profile"])
+    assert r.returncode != 0
+    assert "nonexistent-profile" in r.stderr

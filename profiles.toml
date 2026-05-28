@@ -1,0 +1,17 @@
+default = "720p-slow"
+
+[profiles.720p-slow]
+description = "H.265 720p, CRF 30, slow preset (default)"
+args = ["-c:v", "libx265", "-vf", "scale=-2:720", "-crf", "30", "-preset", "slow", "-movflags", "+faststart"]
+
+[profiles.1080p]
+description = "H.265 1080p, CRF 28, slow preset"
+args = ["-c:v", "libx265", "-vf", "scale=-2:1080", "-crf", "28", "-preset", "slow", "-movflags", "+faststart"]
+
+[profiles.480p-fast]
+description = "H.265 480p, CRF 32, fast preset"
+args = ["-c:v", "libx265", "-vf", "scale=-2:480", "-crf", "32", "-preset", "fast", "-movflags", "+faststart"]
+
+[profiles.copy-audio]
+description = "H.265 720p, CRF 30, slow preset, original audio stream copied"
+args = ["-c:v", "libx265", "-vf", "scale=-2:720", "-crf", "30", "-preset", "slow", "-c:a", "copy", "-movflags", "+faststart"]

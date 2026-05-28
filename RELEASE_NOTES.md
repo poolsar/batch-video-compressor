@@ -2,6 +2,16 @@
 
 ---
 
+## 2026-05-28 — Encoding profile config
+
+- `2026-05-28` Added `profiles.toml` (adjacent to `compress.py`) with four built-in profiles: `720p-slow` (default), `1080p`, `480p-fast`, `copy-audio`
+- `2026-05-28` New `--profile PROFILE` / `-p PROFILE` CLI flag selects an encoding profile; invalid names auto-print the valid list via `argparse choices=`
+- `2026-05-28` All profile names and descriptions listed in `--help` epilog
+- `2026-05-28` Removed global `FFPB_ENCODE_ARGS` constant; `_run_ffpb` and `run_compress` now accept `encode_args` parameter
+- `2026-05-28` Two new tests: profile flag encodes successfully, invalid profile exits non-zero
+
+---
+
 ## 2026-05-28 — Initial release
 
 ### Core compression

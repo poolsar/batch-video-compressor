@@ -11,6 +11,11 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 try:
+    import tomllib
+except ModuleNotFoundError:
+    sys.exit("Python 3.11+ is required (tomllib not found).")
+
+try:
     import msvcrt  # Windows only; absent on Linux/macOS — Ctrl+G detection is silently disabled
 
     _HAS_MSVCRT = True
@@ -20,14 +25,7 @@ except ImportError:
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v"}
 ENCODE_JSON = "encode.json"
 MAX_ATTEMPTS = 3
-
-FFPB_ENCODE_ARGS = [
-    "-c:v", "libx265",
-    "-vf", "scale=-2:720",
-    "-crf", "30",
-    "-preset", "slow",
-    "-movflags", "+faststart",
-]
+PROFILES_TOML = os.path.join(os.path.dirname(os.path.abspath(__file__)), "profiles.toml")
 
 
 class StopSignal:
@@ -113,13 +111,28 @@ def _initialise_progress(source_dir: str, output_dir: str, video_files: list[str
     return existing
 
 
-def _run_ffpb(input_path: str, output_path: str) -> None:
+def _load_profiles() -> tuple[dict, str]:
+    """Load profiles.toml; returns (profiles_dict, default_name)."""
+    if not os.path.exists(PROFILES_TOML):
+        sys.exit(f"profiles.toml not found: {PROFILES_TOML}")
+    with open(PROFILES_TOML, "rb") as f:
+        data = tomllib.load(f)
+    profiles = data.get("profiles", {})
+    default = data.get("default", next(iter(profiles), None))
+    if not profiles:
+        sys.exit("No profiles defined in profiles.toml")
+    if default not in profiles:
+        sys.exit(f"Default profile '{default}' not found in profiles.toml")
+    return profiles, default
+
+
+def _run_ffpb(input_path: str, output_path: str, encode_args: list[str]) -> None:
     """Encodes input → output via ffpb. Raises RuntimeError on non-zero exit."""
     tmp = output_path + ".tmp.mp4"
     if os.path.exists(tmp):
         os.remove(tmp)
 
-    cmd = ["ffpb", "-i", input_path] + FFPB_ENCODE_ARGS + [tmp]
+    cmd = ["ffpb", "-i", input_path] + encode_args + [tmp]
     result = subprocess.run(cmd)
 
     if result.returncode != 0:
@@ -140,7 +153,7 @@ def _print_summary(progress: dict) -> None:
     print(f"\nИтого: {total} файлов — {done} готово, {failed} ошибок, {pending} осталось")
 
 
-def run_compress(source_dir: str, output_dir: str) -> None:
+def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     video_files = _find_videos(source_dir)
@@ -179,7 +192,7 @@ def run_compress(source_dir: str, output_dir: str) -> None:
         entry["attempts"] += 1
 
         try:
-            _run_ffpb(entry["input"], entry["output"])
+            _run_ffpb(entry["input"], entry["output"], encode_args)
             entry["status"] = "done"
             entry["last_error"] = None
             print(f"     -> {os.path.basename(entry['output'])}")
@@ -195,13 +208,22 @@ def run_compress(source_dir: str, output_dir: str) -> None:
 
 
 def main() -> None:
+    profiles, default_profile = _load_profiles()
+    profile_names = list(profiles.keys())
+    profile_lines = "\n".join(
+        f"  {name:<16} {profiles[name]['description']}" for name in profile_names
+    )
+
     parser = argparse.ArgumentParser(
-        description="Batch-compress videos with ffpb (libx265 720p) with resume support.",
+        description="Batch-compress videos with ffpb (H.265) with resume support.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
+            "Profiles:\n"
+            f"{profile_lines}\n\n"
             "Examples:\n"
             "  py compress.py D:/Videos/course_78\n"
             "  py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265\n"
+            "  py compress.py D:/Videos/course_78 --profile 1080p\n"
             "\n"
             "Outputs go to <course_dir>/compressed/ by default.\n"
             "Progress is saved to encode.json in the output directory.\n"
@@ -213,6 +235,13 @@ def main() -> None:
         "--output", "-o",
         help="Output directory (default: <course_dir>/compressed)",
     )
+    parser.add_argument(
+        "--profile", "-p",
+        choices=profile_names,
+        default=default_profile,
+        metavar="PROFILE",
+        help=f"Encoding profile (default: {default_profile}; choices: {', '.join(profile_names)})",
+    )
     args = parser.parse_args()
 
     source_dir = os.path.abspath(args.course_dir)
@@ -223,8 +252,10 @@ def main() -> None:
         os.path.abspath(args.output) if args.output else os.path.join(source_dir, "compressed")
     )
 
+    encode_args = profiles[args.profile]["args"]
+
     try:
-        run_compress(source_dir, output_dir)
+        run_compress(source_dir, output_dir, encode_args)
     except KeyboardInterrupt:
         print("\nПрервано.")
     except RuntimeError as exc:
