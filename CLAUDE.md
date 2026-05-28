@@ -10,6 +10,17 @@
 - After each commit, review `CLAUDE.md` and `README.md` and update any sections that are
   now stale or incomplete (file layout, usage examples, encode settings, dependencies, etc.).
   Only update what has actually changed; leave accurate sections alone.
+- **CRITICAL — stale docs cause code degradation.** Whenever a discrepancy is detected
+  between any `.md` file and the actual code — wrong function names, removed constants,
+  outdated flags, incorrect file paths, wrong dependency versions, wrong test counts, etc. —
+  STOP and fix the `.md` file immediately, before continuing with any other work. Do not
+  silently read past misleading content. Do not act on it. Correct it first.
+- **DOUBLE CRITICAL — `CLAUDE.md` is the highest-risk file.** This file is loaded as
+  primary context at the start of every session. A single stale fact here poisons every
+  decision that follows and is the most direct path to code degradation. Treat any
+  inaccuracy in `CLAUDE.md` as a blocking issue: verify against the actual code, update
+  `CLAUDE.md` to match the code (never the other way around), and never proceed with
+  work while knowing it contains incorrect information.
 
 ## What this project is
 
