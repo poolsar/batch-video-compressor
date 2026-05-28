@@ -5,7 +5,7 @@ Supports graceful interrupt (Ctrl+G) and resumes automatically from where it lef
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.11+
 - [ffpb](https://github.com/althonos/ffpb) — `pip install ffpb`
 - [ffmpeg](https://ffmpeg.org/) — must be on PATH
 
@@ -17,18 +17,27 @@ py compress.py D:/Videos/course_78
 
 # explicit output directory
 py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265
+
+# use a non-default encoding profile
+py compress.py D:/Videos/course_78 --profile 1080p
 ```
 
 Supported input formats: `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, `.m4v`.
-Output is always `.mp4` (H.265, 720p).
+Output is always `.mp4`.
 
-## Encode settings
+## Encoding profiles
 
-```
--c:v libx265  -vf scale=-2:720  -crf 30  -preset slow  -movflags +faststart
-```
+Profiles are defined in `profiles.toml`. Pass `--profile NAME` (or `-p NAME`) to select one;
+omit it to use the default. An invalid name prints the list of valid choices automatically.
 
-Edit `FFPB_ENCODE_ARGS` in `compress.py` to change codec, resolution, or quality.
+| Profile | Description |
+|---|---|
+| `720p-slow` | H.265 720p, CRF 30, slow preset *(default)* |
+| `1080p` | H.265 1080p, CRF 28, slow preset |
+| `480p-fast` | H.265 480p, CRF 32, fast preset |
+| `copy-audio` | H.265 720p, CRF 30, slow preset, original audio stream copied |
+
+To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py` needed.
 
 ## Resume and progress
 

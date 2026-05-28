@@ -7,6 +7,9 @@
   feature, suggest adding it to `BACKLOG.md` and ask the user before doing so.
 - If a feature being implemented is already listed in `BACKLOG.md`, remove it from there
   and ensure `RELEASE_NOTES.md` has an entry for it (add one if missing).
+- After each commit, review `CLAUDE.md` and `README.md` and update any sections that are
+  now stale or incomplete (file layout, usage examples, encode settings, dependencies, etc.).
+  Only update what has actually changed; leave accurate sections alone.
 
 ## What this project is
 
@@ -18,11 +21,12 @@ support via a per-run `encode.json` progress file.
 
 ```
 compress.py          — CLI entry point and all logic (single file)
+profiles.toml        — named encoding presets (loaded at startup)
 data/
   video-sample.mp4   — fixture for integration tests
 tests/
   conftest.py        — adds repo root to sys.path
-  test_compress.py   — 9 integration tests (offline, require ffpb on PATH)
+  test_compress.py   — 11 integration tests (offline, require ffpb on PATH)
 pyproject.toml       — project metadata and ruff config
 Makefile             — shortcuts: install / test / lint / format / check
 ```
@@ -36,14 +40,20 @@ py compress.py D:/Videos/course_78
 # explicit output directory
 py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265
 
+# use a non-default encoding profile
+py compress.py D:/Videos/course_78 --profile 1080p
+
 # press Ctrl+G to stop gracefully after the current file finishes
 ```
 
 ## Encode settings
 
-`ffpb -i <input> -c:v libx265 -vf scale=-2:720 -crf 30 -preset slow -movflags +faststart <output>`
+Profiles are defined in `profiles.toml` (adjacent to `compress.py`). Each profile has a
+`description` and an `args` list passed verbatim to ffpb. The `default` key sets which
+profile is used when `--profile` is omitted.
 
-Constant `FFPB_ENCODE_ARGS` in `compress.py` — change it to adjust codec, resolution, or quality.
+Built-in profiles: `720p-slow` (default), `1080p`, `480p-fast`, `copy-audio`.
+To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py` needed.
 
 ## Key implementation decisions
 
@@ -96,5 +106,5 @@ Constant `FFPB_ENCODE_ARGS` in `compress.py` — change it to adjust codec, reso
 uv run pytest tests/ -v   # or: make test
 ```
 
-Tests are offline (no network). All 9 tests are skipped automatically if `ffpb` is not on PATH.
+Tests are offline (no network). All 11 tests are skipped automatically if `ffpb` is not on PATH.
 Each test that encodes uses `data/video-sample.mp4` (~3.5 MB); full suite takes ~2 minutes.
