@@ -35,7 +35,7 @@ class StopSignal:
 
     def request(self):
         self.requested = True
-        print("\n[!] Ctrl+G нажат — остановка после текущего файла...", flush=True)
+        print("\n[!] Ctrl+G pressed — stopping after current file...", flush=True)
 
     def start_listener(self):
         if self._listener_started:
@@ -138,7 +138,7 @@ def _run_ffpb(input_path: str, output_path: str, encode_args: list[str]) -> None
     if result.returncode != 0:
         if os.path.exists(tmp):
             os.remove(tmp)
-        raise RuntimeError(f"ffpb завершился с кодом {result.returncode}")
+        raise RuntimeError(f"ffpb exited with code {result.returncode}")
 
     if os.path.exists(output_path):
         os.remove(output_path)
@@ -150,7 +150,7 @@ def _print_summary(progress: dict) -> None:
     done = sum(1 for e in progress["files"] if e["status"] == "done")
     failed = sum(1 for e in progress["files"] if e["status"] == "failed")
     pending = total - done - failed
-    print(f"\nИтого: {total} файлов — {done} готово, {failed} ошибок, {pending} осталось")
+    print(f"\nSummary: {total} files — {done} done, {failed} failed, {pending} remaining")
 
 
 def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> None:
@@ -158,7 +158,7 @@ def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> No
 
     video_files = _find_videos(source_dir)
     if not video_files:
-        print("Видеофайлы не найдены.")
+        print("No video files found.")
         return
 
     progress = _initialise_progress(source_dir, output_dir, video_files)
@@ -167,28 +167,28 @@ def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> No
     stop = StopSignal()
     stop.start_listener()
 
-    print(f"Источник:  {source_dir}")
-    print(f"Вывод:     {output_dir}")
-    print(f"Файлов:    {len(files)}")
-    print("Нажмите Ctrl+G для остановки после текущего файла.\n")
+    print(f"Source:    {source_dir}")
+    print(f"Output:    {output_dir}")
+    print(f"Files:     {len(files)}")
+    print("Press Ctrl+G to stop gracefully after the current file.\n")
 
     for i, entry in enumerate(files):
         tag = f"[{i + 1}/{len(files)}]"
         name = os.path.basename(entry["input"])
 
         if entry["status"] == "done":
-            print(f"{tag} Пропущено (уже готово): {name}")
+            print(f"{tag} Skipped (already done): {name}")
             continue
 
         if entry["attempts"] >= MAX_ATTEMPTS:
-            print(f"{tag} Пропущено (макс. попытки): {name}")
+            print(f"{tag} Skipped (max attempts reached): {name}")
             continue
 
         if stop.requested:
-            print("Остановка по запросу.")
+            print("Stopping as requested.")
             break
 
-        print(f"{tag} Сжатие: {name}")
+        print(f"{tag} Compressing: {name}")
         entry["attempts"] += 1
 
         try:
@@ -200,7 +200,7 @@ def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> No
             entry["last_error"] = str(exc)
             if entry["attempts"] >= MAX_ATTEMPTS:
                 entry["status"] = "failed"
-            print(f"     [!] Ошибка: {exc}")
+            print(f"     [!] Error: {exc}")
 
         _save_progress(output_dir, progress)
 
@@ -246,7 +246,7 @@ def main() -> None:
 
     source_dir = os.path.abspath(args.course_dir)
     if not os.path.isdir(source_dir):
-        sys.exit(f"Ошибка: директория не найдена: {source_dir}")
+        sys.exit(f"Error: directory not found: {source_dir}")
 
     output_dir = (
         os.path.abspath(args.output) if args.output else os.path.join(source_dir, "compressed")
@@ -257,9 +257,9 @@ def main() -> None:
     try:
         run_compress(source_dir, output_dir, encode_args)
     except KeyboardInterrupt:
-        print("\nПрервано.")
+        print("\nInterrupted.")
     except RuntimeError as exc:
-        sys.exit(f"Ошибка: {exc}")
+        sys.exit(f"Error: {exc}")
 
 
 if __name__ == "__main__":

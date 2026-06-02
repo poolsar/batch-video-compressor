@@ -20,6 +20,3 @@ Behaviour mirrors single-directory mode: Ctrl+G stops gracefully after the curre
 progress is persisted per output directory (existing `encode.json` files are reused), and
 already-completed directories are skipped on resume. Lines starting with `#` are ignored.
 
----
-
-## Translate all messages to english language

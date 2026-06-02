@@ -2,6 +2,12 @@
 
 ---
 
+## 2026-06-02 — Translate all messages to English
+
+- `2026-06-02` All Russian-language user-facing messages in `compress.py` translated to English
+
+---
+
 ## 2026-05-28 — Encoding profile config
 
 - `2026-05-28` Added `profiles.toml` (adjacent to `compress.py`) with four built-in profiles: `720p-slow` (default), `1080p`, `480p-fast`, `copy-audio`
