@@ -37,7 +37,7 @@ data/
   video-sample.mp4   — fixture for integration tests
 tests/
   conftest.py        — adds repo root to sys.path
-  test_compress.py   — 11 integration tests (offline, require ffpb on PATH)
+  test_compress.py   — 22 integration tests (offline, require ffpb on PATH)
 pyproject.toml       — project metadata and ruff config
 Makefile             — shortcuts: install / test / lint / format / check
 ```
@@ -54,7 +54,20 @@ py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265
 # use a non-default encoding profile
 py compress.py D:/Videos/course_78 --profile 1080p
 
+# batch mode: compress multiple directories listed in a file
+py compress.py --list courses.txt
+
 # press Ctrl+G to stop gracefully after the current file finishes
+```
+
+List file format (`courses.txt`): one directory per line, optional profile name after the path.
+Lines starting with `#` and blank lines are ignored.
+
+```
+D:/Videos/course_78
+D:/Videos/course_79 1080p
+# this line is a comment
+D:/Videos/course_80 480p-fast
 ```
 
 ## Encode settings
@@ -77,7 +90,8 @@ To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py`
 - **Ctrl+G graceful stop**: `StopSignal` class runs a daemon thread that polls `msvcrt.kbhit()`
   (Windows-only; silently disabled on Linux/macOS). Sets `stop.requested` when BEL byte (`\x07`)
   is detected. The loop checks the flag *before* starting each new file, so the current encode
-  always finishes cleanly.
+  always finishes cleanly. In batch mode a single `StopSignal` is shared across all directories
+  (passed into `run_compress` via its optional `stop` parameter).
 - **Video discovery**: non-recursive `os.scandir` on the source directory. Extensions:
   `.mp4 .mkv .avi .mov .webm .m4v`. Sorted alphabetically — numeric prefixes (e.g. `1. Video.mp4`)
   preserve natural order.
@@ -85,8 +99,14 @@ To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py`
   `movflags +faststart`).
 - **`sys.stdout/stderr.reconfigure(encoding="utf-8")`**: called at module level so Cyrillic
   messages render correctly on Windows regardless of system locale.
+- **Batch list mode (`--list`)**: `run_batch` parses the list file, creates/merges a global
+  progress file (`<list-file-name>.progress.json` next to the list file), then calls `run_compress`
+  per directory. Already-done directories are skipped on resume; failed/pending are retried.
+  Each directory still gets its own `encode.json` in its output directory.
 
-## Progress file schema (`encode.json`)
+## Progress file schemas
+
+### Per-directory (`encode.json`)
 
 ```json
 {
@@ -105,6 +125,24 @@ To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py`
 }
 ```
 
+### Global batch progress (`<list-file>.progress.json`)
+
+```json
+{
+  "list_file":  "/abs/path/courses.txt",
+  "created_at": "2026-06-02T10:00:00",
+  "directories": [
+    {
+      "source_dir": "D:/Videos/course_78",
+      "output_dir": "D:/Videos/course_78/compressed",
+      "profile":    "720p-slow",
+      "status":     "done",
+      "last_error": null
+    }
+  ]
+}
+```
+
 ## Dependencies
 
 - **ffpb** — must be on PATH (`pip install ffpb`); wraps ffmpeg with a progress bar
@@ -117,5 +155,5 @@ To add or adjust a profile, edit `profiles.toml` — no changes to `compress.py`
 uv run pytest tests/ -v   # or: make test
 ```
 
-Tests are offline (no network). All 11 tests are skipped automatically if `ffpb` is not on PATH.
-Each test that encodes uses `data/video-sample.mp4` (~3.5 MB); full suite takes ~2 minutes.
+Tests are offline (no network). All 22 tests are skipped automatically if `ffpb` is not on PATH.
+Each test that encodes uses `data/video-sample.mp4` (~3.5 MB); full suite takes ~4 minutes.

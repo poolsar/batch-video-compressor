@@ -2,6 +2,24 @@
 
 ---
 
+## 2026-06-02 — Batch directory list from file
+
+- `2026-06-02` New `--list FILE` / `-l FILE` flag accepts a plain-text file where each line is a directory path with an optional profile name (e.g. `D:/Videos/course_78 1080p`); lines starting with `#` and blank lines are ignored
+- `2026-06-02` Batch mode shares a single `StopSignal` across all directories — Ctrl+G stops gracefully after the current file, regardless of which directory is being processed
+- `2026-06-02` Per-directory progress is persisted via existing `encode.json` mechanism; global batch progress (which dirs are done/failed/pending) is persisted in `<list-file-name>.progress.json` next to the list file
+- `2026-06-02` Already-done directories are skipped on resume; failed/pending directories are retried
+- `2026-06-02` `--profile` in batch mode sets the default profile; individual list-file entries can override it per-directory
+- `2026-06-02` Four integration tests: basic batch encode, comment-line filtering, resume skipping, per-entry profile override
+- `2026-06-02` `run_compress` refactored to accept an optional shared `StopSignal` (backward-compatible; single-dir mode unaffected)
+
+---
+
+## 2026-06-02 — Batch list tests expanded
+
+- `2026-06-02` Seven additional integration tests for batch mode: missing list file, all-comment file, `--list` + positional dir conflict, no-args error, global progress schema, new-dir merge on resume, `--profile` flag as default for list entries
+
+---
+
 ## 2026-06-02 — Translate all messages to English
 
 - `2026-06-02` All Russian-language user-facing messages in `compress.py` translated to English

@@ -135,7 +135,7 @@ def test_compress_idempotency(tmp_path):
 
     r2 = _run([source_dir, "--output", output_dir])
     assert r2.returncode == 0
-    assert "Пропущено" in r2.stdout, "Expected skip notice on second run"
+    assert "Skipped" in r2.stdout, "Expected skip notice on second run"
 
     prog2 = _read_encode_json(output_dir)
     assert prog2["files"][0]["attempts"] == attempts_after_first  # not incremented
@@ -214,7 +214,7 @@ def test_compress_default_output_dir(tmp_path):
 def test_compress_missing_source_dir_exits_nonzero():
     r = _run(["/nonexistent/path/does/not/exist"])
     assert r.returncode != 0
-    assert "не найдена" in r.stderr
+    assert "not found" in r.stderr
 
 
 def test_compress_empty_dir_exits_zero(tmp_path):
@@ -224,7 +224,7 @@ def test_compress_empty_dir_exits_zero(tmp_path):
 
     r = _run([source_dir])
     assert r.returncode == 0
-    assert "не найден" in r.stdout.lower()
+    assert "no video" in r.stdout.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -251,3 +251,207 @@ def test_compress_invalid_profile_exits_nonzero(tmp_path):
     r = _run([source_dir, "--profile", "nonexistent-profile"])
     assert r.returncode != 0
     assert "nonexistent-profile" in r.stderr
+
+
+# ---------------------------------------------------------------------------
+# Batch list mode (--list)
+# ---------------------------------------------------------------------------
+
+
+def test_batch_list_basic(tmp_path):
+    """--list compresses all directories in the list file and writes a global progress file."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    d2 = tmp_path / "course2"
+    d2.mkdir()
+    shutil.copy2(SAMPLE, d2 / "video.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1}\n{d2}\n", encoding="utf-8")
+
+    r = _run(["--list", str(list_file)])
+    assert r.returncode == 0, f"stdout: {r.stdout}\nstderr: {r.stderr}"
+
+    for d in (d1, d2):
+        out = d / "compressed"
+        assert os.path.isfile(out / "encode.json"), f"encode.json missing in {out}"
+        mp4s = [f for f in os.listdir(out) if f.endswith(".mp4")]
+        assert len(mp4s) == 1
+
+    progress_file = tmp_path / "courses.progress.json"
+    assert progress_file.exists(), "global progress file not created"
+    with open(progress_file, encoding="utf-8") as f:
+        prog = json.load(f)
+    assert len(prog["directories"]) == 2
+    assert all(d["status"] == "done" for d in prog["directories"])
+
+
+def test_batch_list_comment_lines(tmp_path):
+    """Lines starting with '#' and blank lines in the list file are ignored."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(
+        f"# this is a comment\n\n{d1}\n# another comment\n",
+        encoding="utf-8",
+    )
+
+    r = _run(["--list", str(list_file)])
+    assert r.returncode == 0
+
+    with open(tmp_path / "courses.progress.json", encoding="utf-8") as f:
+        prog = json.load(f)
+    assert len(prog["directories"]) == 1
+    assert prog["directories"][0]["status"] == "done"
+
+
+def test_batch_list_resume(tmp_path):
+    """Re-running with --list skips already-done directories."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    d2 = tmp_path / "course2"
+    d2.mkdir()
+    shutil.copy2(SAMPLE, d2 / "video.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1}\n{d2}\n", encoding="utf-8")
+
+    r1 = _run(["--list", str(list_file)])
+    assert r1.returncode == 0
+
+    r2 = _run(["--list", str(list_file)])
+    assert r2.returncode == 0
+    assert r2.stdout.count("Skipped (already done)") == 2
+
+
+def test_batch_list_per_entry_profile(tmp_path):
+    """A profile name after the directory path in the list file overrides the default."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1} 480p-fast\n", encoding="utf-8")
+
+    r = _run(["--list", str(list_file)])
+    assert r.returncode == 0
+
+    with open(tmp_path / "courses.progress.json", encoding="utf-8") as f:
+        prog = json.load(f)
+    assert prog["directories"][0]["profile"] == "480p-fast"
+    assert prog["directories"][0]["status"] == "done"
+
+
+def test_batch_list_missing_file(tmp_path):
+    """--list with a non-existent file exits non-zero with an error message."""
+    r = _run(["--list", str(tmp_path / "nonexistent.txt")])
+    assert r.returncode != 0
+    assert "not found" in r.stderr
+
+
+def test_batch_list_empty_file(tmp_path):
+    """A list file containing only comments and blank lines exits zero with an informational message."""
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text("# comment\n\n# another comment\n", encoding="utf-8")
+
+    r = _run(["--list", str(list_file)])
+    assert r.returncode == 0
+    assert "no directories" in r.stdout.lower()
+
+
+def test_batch_list_and_dir_mutually_exclusive(tmp_path):
+    """Passing both a positional directory and --list must exit non-zero."""
+    source_dir = str(tmp_path / "source")
+    os.makedirs(source_dir)
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(source_dir, encoding="utf-8")
+
+    r = _run([source_dir, "--list", str(list_file)])
+    assert r.returncode != 0
+
+
+def test_batch_no_args_exits_nonzero():
+    """Running with no arguments (no dir, no --list) must exit non-zero."""
+    r = _run([])
+    assert r.returncode != 0
+
+
+def test_batch_list_progress_schema(tmp_path):
+    """Global progress file must contain all required top-level keys and per-directory fields."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1}\n", encoding="utf-8")
+
+    r = _run(["--list", str(list_file)])
+    assert r.returncode == 0
+
+    progress_file = tmp_path / "courses.progress.json"
+    assert progress_file.exists()
+    with open(progress_file, encoding="utf-8") as f:
+        prog = json.load(f)
+
+    for key in ("list_file", "created_at", "directories"):
+        assert key in prog, f"Top-level key missing: {key}"
+
+    assert len(prog["directories"]) == 1
+    entry = prog["directories"][0]
+    for field in ("source_dir", "output_dir", "profile", "status", "last_error"):
+        assert field in entry, f"Per-directory field missing: {field}"
+
+    assert entry["status"] == "done"
+    assert entry["last_error"] is None
+
+
+def test_batch_list_merges_new_dir(tmp_path):
+    """A directory added to the list file between runs is picked up and processed on the next run."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    d2 = tmp_path / "course2"
+    d2.mkdir()
+    shutil.copy2(SAMPLE, d2 / "video.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1}\n", encoding="utf-8")
+
+    r1 = _run(["--list", str(list_file)])
+    assert r1.returncode == 0
+
+    list_file.write_text(f"{d1}\n{d2}\n", encoding="utf-8")
+
+    r2 = _run(["--list", str(list_file)])
+    assert r2.returncode == 0
+    assert "Skipped (already done)" in r2.stdout
+
+    with open(tmp_path / "courses.progress.json", encoding="utf-8") as f:
+        prog = json.load(f)
+    assert len(prog["directories"]) == 2
+    assert all(d["status"] == "done" for d in prog["directories"])
+
+
+def test_batch_list_default_profile_flag(tmp_path):
+    """--profile sets the default profile for list entries that don't specify one."""
+    d1 = tmp_path / "course1"
+    d1.mkdir()
+    shutil.copy2(SAMPLE, d1 / "video-sample.mp4")
+
+    list_file = tmp_path / "courses.txt"
+    list_file.write_text(f"{d1}\n", encoding="utf-8")  # no per-entry profile
+
+    r = _run(["--list", str(list_file), "--profile", "480p-fast"])
+    assert r.returncode == 0
+
+    with open(tmp_path / "courses.progress.json", encoding="utf-8") as f:
+        prog = json.load(f)
+    assert prog["directories"][0]["profile"] == "480p-fast"
+    assert prog["directories"][0]["status"] == "done"

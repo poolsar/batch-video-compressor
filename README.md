@@ -20,10 +20,31 @@ py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265
 
 # use a non-default encoding profile
 py compress.py D:/Videos/course_78 --profile 1080p
+
+# batch mode: compress multiple directories from a list file
+py compress.py --list courses.txt
 ```
 
 Supported input formats: `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, `.m4v`.
 Output is always `.mp4`.
+
+## Batch mode
+
+`--list FILE` (`-l FILE`) accepts a plain-text file where each line is a directory path
+with an optional profile name. Lines starting with `#` and blank lines are ignored.
+
+```
+D:/Videos/course_78
+D:/Videos/course_79 1080p
+# this line is a comment
+D:/Videos/course_80 480p-fast
+```
+
+Each directory uses its own `encode.json` for per-file progress. Global batch progress
+(which directories are done/pending/failed) is saved to `<list-file>.progress.json` next
+to the list file. Already-done directories are skipped on resume.
+
+`--profile NAME` sets the default profile for entries that don't specify one.
 
 ## Encoding profiles
 

@@ -45,10 +45,9 @@ class StopSignal:
 
     def _listen(self):
         while not self.requested:
-            if _HAS_MSVCRT and msvcrt.kbhit():
-                if msvcrt.getch() == b"\x07":
-                    self.request()
-                    break
+            if _HAS_MSVCRT and msvcrt.kbhit() and msvcrt.getch() == b"\x07":
+                self.request()
+                break
             time.sleep(0.05)
 
 
@@ -132,7 +131,7 @@ def _run_ffpb(input_path: str, output_path: str, encode_args: list[str]) -> None
     if os.path.exists(tmp):
         os.remove(tmp)
 
-    cmd = ["ffpb", "-i", input_path] + encode_args + [tmp]
+    cmd = ["ffpb", "-i", input_path, *encode_args, tmp]
     result = subprocess.run(cmd)
 
     if result.returncode != 0:
@@ -153,7 +152,14 @@ def _print_summary(progress: dict) -> None:
     print(f"\nSummary: {total} files — {done} done, {failed} failed, {pending} remaining")
 
 
-def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> None:
+def run_compress(
+    source_dir: str, output_dir: str, encode_args: list[str], stop: StopSignal | None = None
+) -> None:
+    owned_stop = stop is None
+    if owned_stop:
+        stop = StopSignal()
+        stop.start_listener()
+
     os.makedirs(output_dir, exist_ok=True)
 
     video_files = _find_videos(source_dir)
@@ -164,13 +170,11 @@ def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> No
     progress = _initialise_progress(source_dir, output_dir, video_files)
     files = progress["files"]
 
-    stop = StopSignal()
-    stop.start_listener()
-
     print(f"Source:    {source_dir}")
     print(f"Output:    {output_dir}")
     print(f"Files:     {len(files)}")
-    print("Press Ctrl+G to stop gracefully after the current file.\n")
+    if owned_stop:
+        print("Press Ctrl+G to stop gracefully after the current file.\n")
 
     for i, entry in enumerate(files):
         tag = f"[{i + 1}/{len(files)}]"
@@ -207,6 +211,136 @@ def run_compress(source_dir: str, output_dir: str, encode_args: list[str]) -> No
     _print_summary(progress)
 
 
+def _parse_list_file(list_path: str) -> list[tuple[str, str | None]]:
+    """Return (directory, profile_or_None) pairs from a batch list file; '#' lines are ignored."""
+    entries = []
+    with open(list_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(None, 1)
+            directory = parts[0]
+            profile = parts[1].strip() if len(parts) > 1 else None
+            entries.append((directory, profile))
+    return entries
+
+
+def _batch_progress_path(list_path: str) -> str:
+    base = os.path.splitext(os.path.abspath(list_path))[0]
+    return base + ".progress.json"
+
+
+def _load_batch_progress(list_path: str) -> dict | None:
+    path = _batch_progress_path(list_path)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_batch_progress(list_path: str, progress: dict) -> None:
+    with open(_batch_progress_path(list_path), "w", encoding="utf-8") as f:
+        json.dump(progress, f, ensure_ascii=False, indent=2)
+
+
+def _initialise_batch_progress(
+    list_path: str, entries: list[tuple[str, str | None]], default_profile: str
+) -> dict:
+    existing = _load_batch_progress(list_path)
+
+    def _make_dir_entry(raw_dir: str, profile: str | None) -> dict:
+        abs_dir = os.path.abspath(raw_dir)
+        return {
+            "source_dir": abs_dir,
+            "output_dir": os.path.join(abs_dir, "compressed"),
+            "profile": profile or default_profile,
+            "status": "pending",
+            "last_error": None,
+        }
+
+    if existing is None:
+        progress = {
+            "list_file": os.path.abspath(list_path),
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "directories": [_make_dir_entry(d, p) for d, p in entries],
+        }
+        _save_batch_progress(list_path, progress)
+        return progress
+
+    # Merge: preserve existing status; update profile; append new dirs
+    tracked = {e["source_dir"]: e for e in existing["directories"]}
+    for raw_dir, profile in entries:
+        abs_dir = os.path.abspath(raw_dir)
+        if abs_dir in tracked:
+            tracked[abs_dir]["profile"] = profile or default_profile
+        else:
+            existing["directories"].append(_make_dir_entry(raw_dir, profile))
+    _save_batch_progress(list_path, existing)
+    return existing
+
+
+def run_batch(list_path: str, profiles: dict, default_profile: str) -> None:
+    if not os.path.isfile(list_path):
+        sys.exit(f"Error: list file not found: {list_path}")
+
+    entries = _parse_list_file(list_path)
+    if not entries:
+        print("No directories found in list file.")
+        return
+
+    progress = _initialise_batch_progress(list_path, entries, default_profile)
+    dirs = progress["directories"]
+
+    stop = StopSignal()
+    stop.start_listener()
+
+    print(f"List:      {list_path}")
+    print(f"Dirs:      {len(dirs)}")
+    print("Press Ctrl+G to stop gracefully after the current file.\n")
+
+    for i, dir_entry in enumerate(dirs):
+        tag = f"[{i + 1}/{len(dirs)}]"
+        source_dir = dir_entry["source_dir"]
+        profile_name = dir_entry["profile"]
+
+        if dir_entry["status"] == "done":
+            print(f"{tag} Skipped (already done): {source_dir}")
+            continue
+
+        if stop.requested:
+            print("Stopping as requested.")
+            break
+
+        if profile_name not in profiles:
+            msg = f"Unknown profile: {profile_name}"
+            print(f"{tag} Skipped ({msg}): {source_dir}")
+            dir_entry["status"] = "failed"
+            dir_entry["last_error"] = msg
+            _save_batch_progress(list_path, progress)
+            continue
+
+        output_dir = dir_entry["output_dir"]
+        encode_args = profiles[profile_name]["args"]
+        print(f"{tag} Processing: {source_dir}  [profile: {profile_name}]\n")
+
+        try:
+            run_compress(source_dir, output_dir, encode_args, stop=stop)
+            dir_entry["status"] = "done"
+            dir_entry["last_error"] = None
+        except Exception as exc:
+            dir_entry["status"] = "failed"
+            dir_entry["last_error"] = str(exc)
+            print(f"     [!] Directory error: {exc}")
+
+        _save_batch_progress(list_path, progress)
+
+    done = sum(1 for d in dirs if d["status"] == "done")
+    failed = sum(1 for d in dirs if d["status"] == "failed")
+    pending = len(dirs) - done - failed
+    print(f"\nBatch summary: {len(dirs)} dirs — {done} done, {failed} failed, {pending} remaining")
+
+
 def main() -> None:
     profiles, default_profile = _load_profiles()
     profile_names = list(profiles.keys())
@@ -224,16 +358,32 @@ def main() -> None:
             "  py compress.py D:/Videos/course_78\n"
             "  py compress.py D:/Videos/course_78 --output D:/Videos/course_78_x265\n"
             "  py compress.py D:/Videos/course_78 --profile 1080p\n"
+            "  py compress.py --list courses.txt\n"
+            "\n"
+            "List file format (one entry per line, profile is optional):\n"
+            "  D:/Videos/course_78\n"
+            "  D:/Videos/course_79 1080p\n"
+            "  # this line is a comment\n"
             "\n"
             "Outputs go to <course_dir>/compressed/ by default.\n"
             "Progress is saved to encode.json in the output directory.\n"
+            "Batch progress is saved to <list-file>.progress.json.\n"
             "Press Ctrl+G to stop gracefully after the current file finishes."
         ),
     )
-    parser.add_argument("course_dir", help="Directory containing video files to compress")
+    parser.add_argument(
+        "course_dir",
+        nargs="?",
+        help="Directory containing video files to compress",
+    )
+    parser.add_argument(
+        "--list", "-l",
+        metavar="FILE",
+        help="Plain-text file listing directories to compress (one per line, optional profile)",
+    )
     parser.add_argument(
         "--output", "-o",
-        help="Output directory (default: <course_dir>/compressed)",
+        help="Output directory for single-dir mode (default: <course_dir>/compressed)",
     )
     parser.add_argument(
         "--profile", "-p",
@@ -244,18 +394,25 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    source_dir = os.path.abspath(args.course_dir)
-    if not os.path.isdir(source_dir):
-        sys.exit(f"Error: directory not found: {source_dir}")
-
-    output_dir = (
-        os.path.abspath(args.output) if args.output else os.path.join(source_dir, "compressed")
-    )
-
-    encode_args = profiles[args.profile]["args"]
+    if args.list and args.course_dir:
+        parser.error("--list and a positional directory are mutually exclusive")
+    if not args.list and not args.course_dir:
+        parser.error("provide a course directory or use --list FILE")
 
     try:
-        run_compress(source_dir, output_dir, encode_args)
+        if args.list:
+            run_batch(args.list, profiles, args.profile)
+        else:
+            source_dir = os.path.abspath(args.course_dir)
+            if not os.path.isdir(source_dir):
+                sys.exit(f"Error: directory not found: {source_dir}")
+            output_dir = (
+                os.path.abspath(args.output)
+                if args.output
+                else os.path.join(source_dir, "compressed")
+            )
+            encode_args = profiles[args.profile]["args"]
+            run_compress(source_dir, output_dir, encode_args)
     except KeyboardInterrupt:
         print("\nInterrupted.")
     except RuntimeError as exc:
