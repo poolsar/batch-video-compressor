@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-06-04 — Fix garbled Cyrillic filenames in ffpb output
+
+- `2026-06-04` Pass `PYTHONUTF8=1` in the environment when launching ffpb, forcing its tqdm progress bar to write UTF-8 bytes; without this, the ffpb subprocess inherits the system locale encoding (e.g. CP1251 on Russian Windows) and writes CP1251 bytes that a UTF-8 console misreads as garbled Cyrillic
+- `2026-06-04` Also call `SetConsoleOutputCP(65001)` at startup (Windows only, via `ctypes`) so the console is set to UTF-8 even when running from legacy cmd.exe; no-op on Linux/macOS and on modern Windows Terminal (already UTF-8)
+
+---
+
 ## 2026-06-02 — Batch directory list from file
 
 - `2026-06-02` New `--list FILE` / `-l FILE` flag accepts a plain-text file where each line is a directory path with an optional profile name (e.g. `D:/Videos/course_78 1080p`); lines starting with `#` and blank lines are ignored

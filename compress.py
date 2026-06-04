@@ -11,6 +11,12 @@ sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
 try:
+    import ctypes
+    ctypes.windll.kernel32.SetConsoleOutputCP(65001)  # UTF-8 console so subprocess (ffpb) renders Cyrillic correctly
+except Exception:
+    pass
+
+try:
     import tomllib
 except ModuleNotFoundError:
     sys.exit("Python 3.11+ is required (tomllib not found).")
@@ -132,7 +138,9 @@ def _run_ffpb(input_path: str, output_path: str, encode_args: list[str]) -> None
         os.remove(tmp)
 
     cmd = ["ffpb", "-i", input_path, *encode_args, tmp]
-    result = subprocess.run(cmd)
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    result = subprocess.run(cmd, env=env)
 
     if result.returncode != 0:
         if os.path.exists(tmp):
