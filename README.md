@@ -28,6 +28,23 @@ py compress.py --list courses.txt
 Supported input formats: `.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, `.m4v`.
 Output is always `.mp4`.
 
+## Shortcut: run as `compress` from anywhere
+
+`bin/compress.bat` forwards all arguments to `py compress.py`. Add the `bin/` directory
+to your `PATH` (Windows: *System Properties → Environment Variables → Path*) to run the
+tool as `compress` from any directory — no need to type the path to `compress.py`.
+
+```bash
+# from anywhere on the machine
+compress D:/Videos/course_78 --profile 1080p
+
+# or cd into the course directory and compress it in place
+cd D:/Videos/course_78
+compress .
+```
+
+Every flag (`--output`, `--profile`, `--list`, etc.) works the same as with `py compress.py`.
+
 ## Batch mode
 
 `--list FILE` (`-l FILE`) accepts a plain-text file where each line is a directory path

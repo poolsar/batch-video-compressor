@@ -2,6 +2,13 @@
 
 ---
 
+## 2026-06-12 — `compress` command shortcut
+
+- `2026-06-12` Added `bin/compress.bat`, a thin launcher that forwards all arguments to `py compress.py`; adding `bin/` to `PATH` lets the tool run as `compress` from any directory
+- `2026-06-12` Documented in README: `compress .` runs the tool against the current directory, so courses can be compressed without typing a path
+
+---
+
 ## 2026-06-04 — Fix garbled Cyrillic filenames in ffpb output
 
 - `2026-06-04` Pass `PYTHONUTF8=1` in the environment when launching ffpb, forcing its tqdm progress bar to write UTF-8 bytes; without this, the ffpb subprocess inherits the system locale encoding (e.g. CP1251 on Russian Windows) and writes CP1251 bytes that a UTF-8 console misreads as garbled Cyrillic

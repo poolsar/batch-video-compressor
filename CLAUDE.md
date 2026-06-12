@@ -33,6 +33,9 @@ support via a per-run `encode.json` progress file.
 ```
 compress.py          — CLI entry point and all logic (single file)
 profiles.toml        — named encoding presets (loaded at startup)
+bin/
+  compress.bat       — Windows launcher; forwards args to `py compress.py`.
+                       Add bin/ to PATH to run as `compress` from any directory.
 data/
   video-sample.mp4   — fixture for integration tests
 tests/
